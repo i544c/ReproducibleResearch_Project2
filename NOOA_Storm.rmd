@@ -1,0 +1,156 @@
+---
+title : "NOAA Storm Database Analysis"
+author: "Isaac G Veras"
+date  : "05/10/2023"
+output: html_document
+---
+
+## Introduction
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the **U.S. National Oceanic and Atmospheric Administration's (NOAA)** storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+## Questions
+
+**The analysis is trying to answer the following questions:**
+
+1.  Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
+
+2.  Across the United States, which types of events have the greatest economic consequences?
+
+### Package installation:
+
+```{r}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(pacman,     # Package Manager
+               knitr,      # Transform R Markdown documents into various output formats
+               plyr,       # Data manipulation
+               data.table, # Manipulate, process and analyze large data sets
+               tidyverse   # Data organization
+)
+```
+
+## 1. Data Processing:
+
+The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size.
+
+```{R}
+data_url  <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+file_name <- "StormData.csv.bz2"
+
+if (!file.exists(file_name)) {
+    download.file(data_url, file_name, method = "curl")
+}
+```
+
+### 1.1 Load Data into dataset
+
+```{R}
+storm_data <- read.csv(file_name,
+                       header = TRUE,
+                       sep    = ","
+)
+```
+
+The raw data structure consist of `r dim(storm_data)[1]` row(s) and `r dim(storm_data)[2]` columns
+
+List of available columns:
+
+```{R, echo=FALSE}
+names(storm_data)
+```
+
+Check first five rows of raw data:
+
+```{R}
+head(storm_data)
+```
+
+## 2. Data Cleansing
+
+For this analysis, only a few columns which are required to answer both questions. So, we create a subset from raw dataset which contains the meaningful variable for this research. The required column are:--
+
+| No. | Column     | Description                         |
+|-----|------------|-------------------------------------|
+| 1\. | EVTYPE     | Type of event recorded              |
+| 2\. | FATALITIES | Number of fatalities reported       |
+| 3\. | INJURIES   | Number of people injured reported   |
+| 4\. | PROPDMG    | Property damage measurement         |
+| 5\. | PROPDMGEXP | The exponential for Property Damage |
+| 6\. | CROPDMG    | Crop damage measurement             |
+| 7\. | CROPDMGEXP | The exponential for Crop Damage     |
+
+```{R, message=FALSE, warning=FALSE}
+storm_data_select <- select(storm_data, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+```
+
+Check first five rows from subset dataset:
+
+```{R}
+head(storm_data_select)
+```
+
+To get the right value, we must change the property damage and crop damage to it's actual value. The exponential is describe as shown in the table below:--
+
+| No. | EXP | Description      |
+|-----|-----|------------------|
+| 1   | H   | Hundred (10\^2)  |
+| 2   | K   | Thousand (10\^3) |
+| 3   | M   | Million (10\^6)  |
+| 4   | B   | Billion (10\^9)  |
+
+## 3. Analysing Data
+
+### 3.1 Events are most harmful with respect to population health.
+
+```{R}
+health_effects <- storm_data_select %>%
+        group_by(EVTYPE) %>%
+        summarise(health_affected = sum(FATALITIES + INJURIES)) %>%
+        arrange(desc(health_affected)
+        )
+
+top10 <- health_effects[1:10,]
+
+with(top10, barplot(height    = health_affected,
+                    names.arg = EVTYPE,
+                    las       = 3,
+                    col = c("black",
+                            "darkblue",
+                            "darkgray",
+                            "blue",
+                            "gray"))
+)
+```
+
+### 3.2 Events have the greatest economic consequences:
+
+```{R}
+economic_effects <- storm_data_select %>%
+        mutate(actual_propdmg = case_when(.$PROPDMGEXP == "H" ~ .$PROPDMG * 10^2,
+                                          .$PROPDMGEXP == "K" ~ .$PROPDMG * 10^3,
+                                          .$PROPDMGEXP == "M" ~ .$PROPDMG * 10^6,
+                                          .$PROPDMGEXP == "B" ~ .$PROPDMG * 10^9,
+                                          TRUE ~ .$PROPDMG)) %>%
+        mutate(actual_cropdmg = case_when(.$CROPDMGEXP == "H" ~ .$CROPDMG * 10^2,
+                                          .$CROPDMGEXP == "K" ~ .$CROPDMG * 10^3,
+                                          .$CROPDMGEXP == "M" ~ .$CROPDMG * 10^6,
+                                          .$CROPDMGEXP == "B" ~ .$CROPDMG * 10^9,
+                                          TRUE ~ .$CROPDMG)) %>%
+        group_by(EVTYPE) %>%
+        summarise(total_actual_damage = sum(actual_propdmg + actual_cropdmg)) %>%
+        arrange(desc(total_actual_damage))
+
+clrs <- c("black", "slategray", "darkgray", "gray", "darkblue", "navy", "blue", "royalblue", "darkgreen", "green3")
+top10 <- economic_effects[1:10,]
+ggplot(data = top10, aes(EVTYPE, total_actual_damage / 10^3, fill = EVTYPE)) +
+        geom_bar(stat = "identity") +
+        guides(fill = FALSE) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        scale_fill_manual(values = clrs)
+```
+
+## Results:
+
+The chart illustrates the top ten types of events responsible for the most extensive property and crop damage in the United States. Tornadoes emerge as the primary cause of property damage in the United States. Subsequently, floods and flash floods rank second, followed by wind and thunderstorms. Hail stands out as the leading contributor to crop damage in the United States. It is followed by floods and flash floods in the second position, with wind and thunderstorms trailing behind.
